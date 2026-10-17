@@ -1,0 +1,13 @@
+services:
+
+  groovr:
+    build:
+      context: ./
+      dockerfile: dockerfile
+    container_name: groovr
+    volumes:
+      - ./:/usr/src/app
+      - groovr_node_modules:/usr/src/app/node_modules
+
+volumes:
+  groovr_node_modules:

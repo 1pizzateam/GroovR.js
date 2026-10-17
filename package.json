@@ -1,0 +1,49 @@
+{
+  "name": "@1pizzateam/groovr",
+  "version": "0.1.0",
+  "description": "Song format and Web Audio playback engine for games, authored with the Cadenza editor",
+  "keywords": ["music", "audio", "web-audio", "synth", "sequencer", "game", "typescript"],
+  "homepage": "https://github.com/1pizzateam/GroovR.js",
+  "type": "module",
+  "sideEffects": false,
+  "main": "dist/groovr.js",
+  "types": "dist/groovr.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/groovr.d.ts",
+      "import": "./dist/groovr.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1pizzateam/GroovR.js.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Ludovic Cluber"
+  },
+  "scripts": {
+    "build": "npm run build:lib && npm run test",
+    "build:lib": "node ./scripts/clear.js && tsc && npm run rollup && node ./scripts/copy.js",
+    "rollup": "rollup --config rollup.config.mjs",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage"
+  },
+  "files": ["dist/"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">= 22"
+  },
+  "dependencies": {
+    "@1pizzateam/spock": "4.3.0"
+  },
+  "devDependencies": {
+    "@types/jest": "29.5.14",
+    "@types/node": "26.4.1",
+    "jest": "29.7.0",
+    "rollup": "4.63.1",
+    "rollup-plugin-dts": "6.5.1",
+    "typescript": "6.0.3"
+  }
+}
