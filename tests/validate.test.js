@@ -83,7 +83,7 @@ describe('validateSong', () => {
 
   it('accepts instrument and master effects and rejects broken ones', () => {
     const s = song();
-    const all = ['delay', 'reverb', 'distortion', 'chorus', 'phaser', 'tremolo', 'compressor', 'eq', 'stereo'].map((kind) => ({ kind }));
+    const all = ['delay', 'reverb', 'distortion', 'chorus', 'phaser', 'tremolo', 'vibrato', 'compressor', 'eq', 'stereo'].map((kind) => ({ kind }));
     s.instruments[0].fx = { chain: [...all, { kind: 'delay', time: 0.75, mix: 0.4, bypass: true }], gain: 0.9, send: 0.3, out: 'amp' };
     s.master = { chain: [{ kind: 'compressor', threshold: -12 }, { kind: 'eq', high: 2 }], gain: 1 };
     s.buses[0].chain.push({ kind: 'chorus', rate: 2 });
@@ -128,9 +128,9 @@ describe('validateSong', () => {
 
   it('accepts rack state and rejects a broken one', () => {
     const s = song();
-    s.instruments[0].rack = { template: 'guitar', values: { level: 1.2 } };
+    s.instruments[0].rack = { template: 'sfx-synth', values: { level: 1.2, wave: 'sawtooth' } };
     expect(validateSong(s)).toEqual([]);
-    s.instruments[0].rack = { template: 'guitar', values: { level: 'loud' } };
+    s.instruments[0].rack = { template: 'guitar', values: { level: null } };
     expect(validateSong(s)).toHaveLength(1);
   });
 

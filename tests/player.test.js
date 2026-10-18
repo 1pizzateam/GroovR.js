@@ -49,7 +49,7 @@ const song = (extra = {}) => ({
     id: 'i',
     layers: [
       {
-        kind: 'voice', duration: { d: 1 }, wet: 0.5, out: 'amp', shaper: true, lfo: { freq: 5, base: 1, depth: 0.1 },
+        kind: 'voice', duration: { d: 1 }, wet: 0.5, out: 'amp', shaper: true, lfo: { freq: 5, base: 1, depth: 0.1 }, vibrato: { rate: 11, depth: 14 },
         velocity: { b: 0.5, r: 0.5 },
         envelope: [[0, 0], [0.1, { v: 1 }], [{ d: 0.5, max: 0.2 }, 0.2, 'hold'], [{ d: 1 }, 0.001, 'exp']],
         filter: { type: 'lowpass', q: 2, envelope: [[0, 500], [{ d: 1 }, 100, 'exp']] },
@@ -135,18 +135,22 @@ describe('Player', () => {
     expect(player.playing).toBe(false);
   });
 
-  it('immediately fades out silenced tracks and reschedules when mute or solo changes while playing', () => {
+  it('mutes and unmutes tracks in place without restarting the song or duplicating scheduled notes', () => {
     const ctx = makeContext();
     const s = song();
     const player = new Player(ctx, s, { destination: ctx.destination });
     run(ctx, player, 1);
+    const beforeCount = ctx.oscillators.length;
+    const beforePos = player.position;
     const muted = song();
     muted.tracks[0].mute = true;
     player.setSong(muted);
     expect(player.playing).toBe(true);
-    const countWhileMuted = ctx.oscillators.length;
+    expect(player.position).toBeCloseTo(beforePos);
+    expect(ctx.oscillators.length).toBe(beforeCount);
     player.setSong(song());
-    expect(ctx.oscillators.length).toBeGreaterThan(countWhileMuted);
+    expect(player.position).toBeCloseTo(beforePos);
+    expect(ctx.oscillators.length).toBe(beforeCount);
     player.stop();
   });
 
@@ -414,6 +418,37 @@ describe('Player', () => {
       player.setSong(mk(0.61, 0.29));
       expect(out.gain.targets.at(-1)[0]).toBe(0.61);
       expect(send.gain.targets.at(-1)[0]).toBe(0.29);
+    });
+
+    it('applies instrument distortion and vibrato effects per-voice before the voice envelope', () => {
+      const ctx = makeContext();
+      const oscs = [];
+      const shapers = [];
+      const createOsc = ctx.createOscillator;
+      const createShaper = ctx.createWaveShaper;
+      ctx.createOscillator = () => { const o = createOsc(); oscs.push(o); return o; };
+      ctx.createWaveShaper = () => { const w = createShaper(); shapers.push(w); return w; };
+      const s = fxSong({
+        chain: [
+          { kind: 'distortion', drive: 1, hardness: 5, tone: 0, level: 1, mix: 1, oversample: 'none' },
+          { kind: 'vibrato', rate: 26, depth: 34 },
+        ],
+      });
+      delete s.instruments[0].layers[0].shaper;
+      delete s.instruments[0].layers[0].vibrato;
+      const player = new Player(ctx, s, { destination: ctx.destination });
+      player.preview('i');
+      expect(shapers.some((w) => w.curve && !w.oversample)).toBe(true);
+      expect(oscs.some((o) => o.frequency.value === 26)).toBe(true);
+
+      const s2 = fxSong({
+        chain: [{ kind: 'distortion', drive: 8, hardness: 2, tone: 4000, level: 0.6, mix: 0.8 }],
+      });
+      delete s2.instruments[0].layers[0].shaper;
+      delete s2.instruments[0].layers[0].vibrato;
+      player.setSong(s2);
+      player.preview('i');
+      expect(shapers.some((w) => w.oversample === '2x')).toBe(true);
     });
   });
 

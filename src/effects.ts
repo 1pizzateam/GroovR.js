@@ -281,6 +281,26 @@ function buildTremolo(env: FxEnv, n: Of<"tremolo">): Built {
   return { input: g, output: g, update: (x) => apply(x as Of<"tremolo">), dispose: () => osc.stop() };
 }
 
+function buildVibrato(env: FxEnv, n: Of<"vibrato">): Built {
+  const { ctx } = env;
+  const delay = ctx.createDelay(0.1);
+  const osc = lfo(ctx);
+  const depth = ctx.createGain();
+  osc.connect(depth);
+  depth.connect(delay.delayTime);
+  const s = setter(ctx);
+  const apply = (x: Of<"vibrato">) => {
+    const rate = clamp(x.rate ?? 6, 0.1, 60);
+    const hz = clamp(x.depth ?? 12, 0, 120);
+    s.set(delay.delayTime, 0.01);
+    s.set(osc.frequency, rate);
+    s.set(depth.gain, clamp(hz / (440 * 2 * Math.PI * rate), 0, 0.009));
+  };
+  apply(n);
+  s.done();
+  return { input: delay, output: delay, update: (x) => apply(x as Of<"vibrato">), dispose: () => osc.stop() };
+}
+
 function buildCompressor(env: FxEnv, n: Of<"compressor">): Built {
   const { ctx } = env;
   const comp = ctx.createDynamicsCompressor();
@@ -372,6 +392,8 @@ export function buildEffect(env: FxEnv, node: EffectNode): Built {
       return buildPhaser(env, node);
     case "tremolo":
       return buildTremolo(env, node);
+    case "vibrato":
+      return buildVibrato(env, node);
     case "compressor":
       return buildCompressor(env, node);
     case "eq":

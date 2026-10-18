@@ -41,6 +41,11 @@ export interface Lfo {
   depth: number;
 }
 
+export interface Vibrato {
+  rate: number;
+  depth: number;
+}
+
 export interface VoiceLayer {
   kind: "voice";
   duration: Expr;
@@ -52,6 +57,7 @@ export interface VoiceLayer {
   // Soft clipping of the voices, as the hardness of the curve (tanh of hardness times the signal). true means 4
   shaper?: boolean | number;
   lfo?: Lfo;
+  vibrato?: Vibrato;
   // Overrides the note velocity inside this layer's expressions
   velocity?: Expr;
   envelope: Point[];
@@ -82,8 +88,8 @@ export type Layer = VoiceLayer | NoiseLayer;
 export interface RackState {
   // Template the knobs come from; "custom" templates carry their own base patch
   template: string;
-  // Knob values by knob id
-  values: Record<string, number>;
+  // Knob and selector button values by control id
+  values: Record<string, number | string>;
   // Patch the knobs are applied to, for custom templates
   base?: Layer[];
 }
@@ -115,6 +121,7 @@ export type EffectNode = Bypassable &
     | { kind: "chorus"; rate?: number; delay?: number; depth?: number; mix?: number }
     | { kind: "phaser"; rate?: number; freq?: number; depth?: number; feedback?: number; mix?: number }
     | { kind: "tremolo"; rate?: number; depth?: number }
+    | { kind: "vibrato"; rate?: number; depth?: number }
     | { kind: "compressor"; threshold?: number; ratio?: number; attack?: number; release?: number; knee?: number; makeup?: number }
     // Three bands: low shelf, mid bell and high shelf, gains in dB
     | { kind: "eq"; low?: number; mid?: number; high?: number; lowFreq?: number; midFreq?: number; highFreq?: number; q?: number }

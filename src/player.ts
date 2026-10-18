@@ -1,7 +1,7 @@
 import { Rand } from "@1pizzateam/spock";
 import { buildTimeline, midiToFrequency } from "./events.js";
 import type { NoteEvent, Stream, Timeline } from "./events.js";
-import { buildChain, distortionShape, reverbShape, softClip } from "./effects.js";
+import { buildChain, buildEffect, distortionShape, reverbShape, softClip } from "./effects.js";
 import type { Chain, FxEnv } from "./effects.js";
 import type { Bus, EffectNode, Expr, FilterType, Fx, Instrument, NoiseLayer, Point, Song, VoiceLayer } from "./song.js";
 
@@ -37,12 +37,18 @@ interface Level {
   buses: Map<string, AudioNode>;
   // Input of each instrument's effects chain
   fx: Map<string, AudioNode>;
+  gates: Map<string, { inst: string; node: GainNode }>;
   chains: ChainRef[];
 }
 
 const isActive = (nodes: EffectNode[]) => nodes.some((n) => !n.bypass);
 const usesFx = (fx: Fx | undefined, master = false): fx is Fx =>
   !!fx && (isActive(fx.chain) || (fx.gain ?? 1) !== 1 || (!master && (fx.send ?? 0) > 0));
+const isVoiceFx = (inst: Instrument, n: EffectNode) =>
+  inst.layers[0]?.kind === "voice" && (n.kind === "vibrato" || n.kind === "distortion");
+const postFxNodes = (inst: Instrument, nodes: EffectNode[]) => nodes.filter((n) => !isVoiceFx(inst, n));
+const usesPostFx = (inst: Instrument, fx: Fx | undefined): fx is Fx =>
+  !!fx && (isActive(postFxNodes(inst, fx.chain)) || (fx.gain ?? 1) !== 1 || (fx.send ?? 0) > 0 || Boolean(fx.out));
 
 /** What decides the shape of the audio graph: which effects exist, in what order and where they send. */
 function structureKey(song: Song): string {
@@ -59,14 +65,16 @@ function structureKey(song: Song): string {
   return JSON.stringify([
     [song.reverb.seconds, song.reverb.power],
     song.buses.map((b) => [b.id, kinds(b.chain)]),
-    song.instruments.filter((i) => usesFx(i.fx)).map((i) => [i.id, kinds(i.fx!.chain), i.fx!.out ?? ""]),
+    song.instruments.filter((i) => usesFx(i.fx)).map((i) => [i.id, kinds(i.fx!.chain), i.fx!.out ?? "", usesPostFx(i, i.fx)]),
     usesFx(song.master, true) ? kinds(song.master!.chain) : null,
   ]);
 }
 
-function audibilityKey(song: Song): string {
+function isInstrumentAudible(song: Song, instrumentId: string): boolean {
+  const tracks = song.tracks.filter((t) => t.instrument === instrumentId);
+  if (tracks.length === 0) return true;
   const hasSolo = song.tracks.some((t) => t.solo);
-  return song.tracks.map((t) => (!t.mute && (!hasSolo || Boolean(t.solo)) ? "1" : "0")).join("");
+  return tracks.some((t) => !t.mute && (!hasSolo || Boolean(t.solo)));
 }
 
 interface StreamState {
@@ -104,7 +112,6 @@ export class Player {
   private instruments = new Map<string, Instrument>();
   private bus: Level | null = null;
   private busKey = "";
-  private audibilityKey = "";
   private options: PlayerOptions;
   private noise: AudioBuffer;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -151,25 +158,10 @@ export class Player {
   }
 
   setSong(song: Song): void {
-    const pos = this.playing ? this.position : 0;
-    const aKey = audibilityKey(song);
-    const audibilityChanged = this.playing && aKey !== this.audibilityKey;
     this.song = song;
-    this.timeline = buildTimeline(song);
+    this.timeline = buildTimeline(song, true);
     this.instruments = new Map(song.instruments.map((i) => [i.id, i]));
-    this.audibilityKey = aKey;
     const key = structureKey(song);
-    if (audibilityChanged) {
-      this.release(this.bus, 0.02);
-      this.bus = null;
-      this.busKey = key;
-      this.startOffset = pos;
-      this.scheduledTo = pos;
-      this.startTime = this.ctx.currentTime + 0.01 - (pos * 60) / song.bpm;
-      this.streams = this.seek(true);
-      this.schedule();
-      return;
-    }
     // The buses only change with the mix settings, so editing notes or patches keeps the sounding notes on theirs
     if (this.bus && key !== this.busKey) {
       if (this.playing) this.releaseLater(this.bus);
@@ -234,6 +226,7 @@ export class Player {
     }
     unref(setTimeout(() => {
       for (const n of [bus.level, bus.wetBus, bus.convolver, bus.tail]) n.disconnect();
+      for (const g of bus.gates.values()) g.node.disconnect();
       for (const c of bus.chains) c.chain?.dispose();
     }, fade * 1000 + 100));
   }
@@ -298,15 +291,17 @@ export class Player {
 
   private trigger(e: NoteEvent, when: number, beat: number): void {
     const inst = this.instruments.get(this.song.tracks[e.track].instrument);
-    if (inst) this.playNote(inst, when, { f: midiToFrequency(e.pitch), d: e.duration * beat, v: e.velocity, r: 0, r2: 0, r3: 0 });
+    if (inst) this.playNote(inst, when, { f: midiToFrequency(e.pitch), d: e.duration * beat, v: e.velocity, r: 0, r2: 0, r3: 0 }, true);
   }
 
-  private playNote(inst: Instrument, when: number, base: Trigger): void {
-    for (const layer of inst.layers) {
+  private playNote(inst: Instrument, when: number, base: Trigger, gated = false): void {
+    const gateInst = gated ? inst.id : undefined;
+    for (let i = 0; i < inst.layers.length; i++) {
+      const layer = inst.layers[i];
       const t = { ...base, r: Rand.float(0, 1), r2: Rand.float(0, 1), r3: Rand.float(0, 1) };
       if (layer.velocity !== undefined) t.v = evaluate(layer.velocity, t);
-      if (layer.kind === "voice") this.voice(when, layer, t, inst.id);
-      else this.noiseHit(when, layer, t, inst.id);
+      if (layer.kind === "voice") this.voice(when, layer, t, inst, i === 0, gateInst);
+      else this.noiseHit(when, layer, t, inst.id, gateInst);
     }
   }
 
@@ -343,9 +338,9 @@ export class Player {
     wetBus.connect(convolver);
     convolver.connect(tail);
     tail.connect(sink);
-    const bus: Level = { level, wetBus, convolver, tail, buses: new Map(), fx: new Map(), chains };
+    const bus: Level = { level, wetBus, convolver, tail, buses: new Map(), fx: new Map(), gates: new Map(), chains };
     for (const b of song.buses) bus.buses.set(b.id, this.createBus(b, bus, env));
-    for (const inst of song.instruments) if (usesFx(inst.fx)) this.createInstrumentFx(inst, bus, env);
+    for (const inst of song.instruments) if (usesPostFx(inst, inst.fx)) this.createInstrumentFx(inst, bus, env);
     return bus;
   }
 
@@ -369,24 +364,40 @@ export class Player {
   private createInstrumentFx(inst: Instrument, level: Level, env: FxEnv): void {
     const fx = inst.fx!;
     const { ctx } = env;
-    const chain = buildChain(env, fx.chain);
+    const chain = buildChain(env, postFxNodes(inst, fx.chain));
+    const scale = isInstrumentAudible(this.song, inst.id) ? 1 : 0;
     const out = ctx.createGain();
-    out.gain.value = fx.gain ?? 1;
+    out.gain.value = (fx.gain ?? 1) * scale;
     if (chain) chain.output.connect(out);
     out.connect((fx.out && level.buses.get(fx.out)) || level.level);
-    const send = this.send(level, out, fx.send ?? 0);
+    const send = this.send(level, out, (fx.send ?? 0) * scale);
     const spec = (x: Song) => {
-      const found = x.instruments.find((i) => i.id === inst.id)?.fx;
-      return found && { nodes: found.chain, gain: found.gain ?? 1, send: found.send ?? 0 };
+      const foundInst = x.instruments.find((i) => i.id === inst.id);
+      const found = foundInst?.fx;
+      const audible = isInstrumentAudible(x, inst.id) ? 1 : 0;
+      return found && foundInst && { nodes: postFxNodes(foundInst, found.chain), gain: (found.gain ?? 1) * audible, send: (found.send ?? 0) * audible };
     };
     level.chains.push({ chain, spec, out, send });
     level.fx.set(inst.id, chain?.input ?? out);
+  }
+
+  private gate(level: Level, instrument: string, key: string, target: AudioNode): AudioNode {
+    const id = `${instrument}:${key}`;
+    const existing = level.gates.get(id);
+    if (existing) return existing.node;
+    const node = this.ctx.createGain();
+    node.gain.value = isInstrumentAudible(this.song, instrument) ? 1 : 0;
+    node.connect(target);
+    level.gates.set(id, { inst: instrument, node });
+    return node;
   }
 
   /** Moves the parameters of the built effects to the song's new values. */
   private updateParams(bus: Level, song: Song): void {
     const now = this.ctx.currentTime;
     bus.tail.gain.setTargetAtTime(song.reverb.return, now, 0.02);
+    for (const { inst, node } of bus.gates.values())
+      node.gain.setTargetAtTime(isInstrumentAudible(song, inst) ? 1 : 0, now, 0.015);
     for (const ref of bus.chains) {
       const spec = ref.spec(song);
       if (!spec) continue;
@@ -396,11 +407,11 @@ export class Player {
     }
   }
 
-  private send(level: Level, node: AudioNode, amount: number): GainNode {
+  private send(level: Level, node: AudioNode, amount: number, instrument?: string): GainNode {
     const wet = this.ctx.createGain();
     wet.gain.value = amount;
     node.connect(wet);
-    wet.connect(level.wetBus);
+    wet.connect(instrument ? this.gate(level, instrument, "wet", level.wetBus) : level.wetBus);
     return wet;
   }
 
@@ -424,16 +435,17 @@ export class Player {
     return node;
   }
 
-  private voice(t: number, l: VoiceLayer, trig: Trigger, instrument: string): void {
+  private voice(t: number, l: VoiceLayer, trig: Trigger, inst: Instrument, primary: boolean, gateInst?: string): void {
     const { ctx } = this;
     const level = this.getBus();
     const duration = evaluate(l.duration, trig);
     const pad = l.pad ?? 0.05;
     const gain = ctx.createGain();
     this.envelope(gain.gain, t, l.envelope, trig);
-    gain.connect(level.fx.get(instrument) ?? ((l.out && level.buses.get(l.out)) || level.level));
+    const dest = level.fx.get(inst.id) ?? ((l.out && level.buses.get(l.out)) || level.level);
+    gain.connect(gateInst ? this.gate(level, gateInst, l.out ?? "", dest) : dest);
     const wet = evaluate(l.wet, trig);
-    if (wet) this.send(level, gain, wet);
+    if (wet) this.send(level, gain, wet, gateInst);
 
     let target: AudioNode = gain;
     if (l.lfo) {
@@ -452,9 +464,24 @@ export class Player {
     }
 
     let chainInput: AudioNode = target;
+    const fxChain = primary ? (inst.fx?.chain ?? []) : [];
+    for (let i = fxChain.length - 1; i >= 0; i--) {
+      const n = fxChain[i];
+      if (n.bypass || n.kind !== "distortion") continue;
+      if ((n.drive ?? 8) === 1 && (n.tone ?? 6000) === 0 && (n.level ?? 0.6) === 1 && (n.mix ?? 1) === 1 && (n.oversample ?? "none") === "none") {
+        const shaper = ctx.createWaveShaper();
+        shaper.curve = softClip(Math.min(20, Math.max(0.1, n.hardness ?? 2)));
+        shaper.connect(chainInput);
+        chainInput = shaper;
+      } else {
+        const built = buildEffect({ ctx, bpm: this.song.bpm }, n);
+        built.output.connect(chainInput);
+        chainInput = built.input;
+      }
+    }
     if (l.filter) {
       const node = this.filter(t, l.filter, trig);
-      node.connect(target);
+      node.connect(chainInput);
       chainInput = node;
     }
     if (l.shaper) {
@@ -464,6 +491,11 @@ export class Player {
       chainInput = drive;
     }
 
+    const vibratos = [
+      ...(l.vibrato ? [l.vibrato] : []),
+      ...fxChain.flatMap((n) => (!n.bypass && n.kind === "vibrato" ? [{ rate: n.rate ?? 6, depth: n.depth ?? 12 }] : [])),
+    ];
+
     for (const spec of l.voices) {
       const osc = ctx.createOscillator();
       if (spec.type) osc.type = spec.type;
@@ -471,13 +503,24 @@ export class Player {
       else osc.frequency.value = evaluate(spec.freq, trig);
       const detune = evaluate(spec.detune, trig);
       if (detune) osc.detune.value = detune;
+      for (const vib of vibratos)
+        if (vib.rate > 0 && vib.depth > 0) {
+          const lfo = ctx.createOscillator();
+          lfo.frequency.value = vib.rate;
+          const depth = ctx.createGain();
+          depth.gain.value = vib.depth;
+          lfo.connect(depth);
+          depth.connect(osc.frequency);
+          lfo.start(t);
+          lfo.stop(t + duration + pad);
+        }
       osc.connect(spec.direct ? target : chainInput);
       osc.start(t);
       osc.stop(t + duration + pad);
     }
   }
 
-  private noiseHit(t: number, l: NoiseLayer, trig: Trigger, instrument: string): void {
+  private noiseHit(t: number, l: NoiseLayer, trig: Trigger, instrument: string, gateInst?: string): void {
     const { ctx } = this;
     const level = this.getBus();
     const length = evaluate(l.length, trig);
@@ -488,9 +531,10 @@ export class Player {
     this.envelope(gain.gain, t, l.envelope ?? [[0, l.level ?? 0], [length, 0.001, "exp"]], trig);
     source.connect(filterNode);
     filterNode.connect(gain);
-    gain.connect(level.fx.get(instrument) ?? level.level);
+    const dest = level.fx.get(instrument) ?? level.level;
+    gain.connect(gateInst ? this.gate(level, gateInst, "", dest) : dest);
     const wet = evaluate(l.wet, trig);
-    if (wet) this.send(level, gain, wet);
+    if (wet) this.send(level, gain, wet, gateInst);
     source.start(t, l.offset === undefined ? Rand.float(0, 3) : evaluate(l.offset, trig));
     source.stop(t + length + (l.pad ?? 0.02));
   }

@@ -38,7 +38,7 @@ describe('effects', () => {
     const nodes = [
       { kind: 'gain', value: 0.5 }, { kind: 'filter', type: 'lowpass', freq: 800, q: 2 },
       { kind: 'delay' }, { kind: 'reverb' }, { kind: 'distortion' }, { kind: 'chorus' }, { kind: 'phaser' }, { kind: 'tremolo' },
-      { kind: 'compressor' }, { kind: 'eq' }, { kind: 'stereo' },
+      { kind: 'vibrato', rate: 8, depth: 16 }, { kind: 'compressor' }, { kind: 'eq' }, { kind: 'stereo' },
     ];
     for (const n of nodes) {
       const ctx = makeContext();

@@ -27,14 +27,14 @@ export interface Timeline {
 const byTime = (a: NoteEvent, b: NoteEvent) => a.time - b.time;
 
 /** Flattens tracks, clips and patterns into streams of notes. */
-export function buildTimeline(song: Song): Timeline {
+export function buildTimeline(song: Song, includeMuted = false): Timeline {
   const patterns = new Map(song.patterns.map((p) => [p.id, p]));
-  const hasSolo = song.tracks.some((t) => t.solo);
+  const hasSolo = !includeMuted && song.tracks.some((t) => t.solo);
   const mainEvents: NoteEvent[] = [];
   const periodic: Stream[] = [];
   let length = 0;
   song.tracks.forEach((t, track) => {
-    const audible = !t.mute && (!hasSolo || Boolean(t.solo));
+    const audible = includeMuted || (!t.mute && (!hasSolo || Boolean(t.solo)));
     const events: NoteEvent[] = [];
     let end = 0;
     for (const c of t.clips) {

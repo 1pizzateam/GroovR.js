@@ -14,6 +14,7 @@ const EFFECT_PARAMS: Record<string, string[]> = {
   chorus: ["rate", "delay", "depth", "mix"],
   phaser: ["rate", "freq", "depth", "feedback", "mix"],
   tremolo: ["rate", "depth"],
+  vibrato: ["rate", "depth"],
   compressor: ["threshold", "ratio", "attack", "release", "knee", "makeup"],
   eq: ["low", "mid", "high", "lowFreq", "midFreq", "highFreq", "q"],
   stereo: ["pan", "width"],
@@ -64,6 +65,7 @@ function checkLayer(l: any, where: string, errors: string[]): void {
   if (l?.kind === "voice") {
     if (!isExpr(l.duration)) errors.push(`${where}: invalid duration`);
     if (l.shaper !== undefined && typeof l.shaper !== "boolean" && !isNum(l.shaper)) errors.push(`${where}: shaper must be true or a hardness`);
+    if (l.vibrato !== undefined && (!isNum(l.vibrato?.rate) || !isNum(l.vibrato?.depth))) errors.push(`${where}: invalid vibrato`);
     if (!isPoints(l.envelope)) errors.push(`${where}: invalid envelope`);
     if (l.filter?.type !== undefined && !FILTERS.includes(l.filter.type)) errors.push(`${where}: invalid filter type`);
     if (l.filter?.envelope !== undefined && !isPoints(l.filter.envelope)) errors.push(`${where}: invalid filter envelope`);
@@ -111,7 +113,12 @@ export function validateSong(data: unknown): string[] {
   for (const i of s.instruments) {
     instruments.add(i.id);
     if (i.fx !== undefined) checkFx(i.fx, `instrument ${i.id} fx`, buses, errors);
-    if (i.rack !== undefined && (typeof i.rack.template !== "string" || !i.rack.values || !Object.values(i.rack.values).every(isNum)))
+    if (
+      i.rack !== undefined &&
+      (typeof i.rack.template !== "string" ||
+        !i.rack.values ||
+        !Object.values(i.rack.values).every((v) => isNum(v) || typeof v === "string"))
+    )
       errors.push(`instrument ${i.id}: invalid rack`);
     if (!Array.isArray(i.layers) || i.layers.length === 0) errors.push(`instrument ${i.id}: layers required`);
     else
