@@ -105,8 +105,10 @@ export type EffectNode = Bypassable &
   (
     | { kind: "gain"; value: number }
     | { kind: "filter"; type: FilterType; q?: number; freq: number }
-    // Echo. time is in beats, so it follows the tempo
+    //Echo. time is in beats, so it follows the tempo
     | { kind: "delay"; time?: number; feedback?: number; tone?: number; mix?: number }
+    // Convolution reverb with its own impulse response and high-frequency damping
+    | { kind: "reverb"; seconds?: number; power?: number; tone?: number; mix?: number }
     // Soft clipping: the signal is multiplied by drive, then bent by tanh(hardness * x). tone is a low-pass in Hz, 0 for none
     | { kind: "distortion"; drive?: number; hardness?: number; tone?: number; level?: number; mix?: number; oversample?: Oversample }
     // Stereo chorus. delay and depth are in milliseconds
@@ -179,6 +181,8 @@ export interface Track {
   instrument: string;
   // When set, the track repeats on its own every `period` beats, independent of the song loop
   period?: number;
+  mute?: boolean;
+  solo?: boolean;
   clips: Clip[];
 }
 

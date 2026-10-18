@@ -135,6 +135,21 @@ describe('Player', () => {
     expect(player.playing).toBe(false);
   });
 
+  it('immediately fades out silenced tracks and reschedules when mute or solo changes while playing', () => {
+    const ctx = makeContext();
+    const s = song();
+    const player = new Player(ctx, s, { destination: ctx.destination });
+    run(ctx, player, 1);
+    const muted = song();
+    muted.tracks[0].mute = true;
+    player.setSong(muted);
+    expect(player.playing).toBe(true);
+    const countWhileMuted = ctx.oscillators.length;
+    player.setSong(song());
+    expect(ctx.oscillators.length).toBeGreaterThan(countWhileMuted);
+    player.stop();
+  });
+
   it('reports a looped position and zero when stopped', () => {
     const ctx = makeContext();
     const player = new Player(ctx, song({ loopStart: 2 }), { destination: ctx.destination });
@@ -177,6 +192,30 @@ describe('Player', () => {
     expect(ctx.oscillators.length).toBeGreaterThan(first);
     expect(ctx.oscillators.at(-1).started).toBeGreaterThanOrEqual(2);
     p2.stop();
+  });
+
+  it('starts from a beat offset and includes notes right on that beat', () => {
+    const ctx = makeContext();
+    const player = new Player(ctx, song(), { destination: ctx.destination });
+    player.play(0.05, 2);
+    expect(player.position).toBeCloseTo(2);
+    const saws = ctx.oscillators.filter((o) => o.type === 'sawtooth');
+    expect(saws[0].started).toBeCloseTo(0.05);
+    expect(saws[0].frequency.value).toBeCloseTo(1760);
+    expect(saws[1].started).toBeCloseTo(2.05);
+    expect(saws[1].frequency.value).toBeCloseTo(880);
+    player.stop();
+  });
+
+  it('keeps playing and advancing position when looping an empty pattern', () => {
+    const ctx = makeContext();
+    const empty = song({ patterns: [{ id: 'p', length: 4, notes: [] }] });
+    const player = new Player(ctx, empty, { destination: ctx.destination });
+    run(ctx, player, 1);
+    ctx.currentTime = 2.05;
+    expect(player.playing).toBe(true);
+    expect(player.position).toBeCloseTo(2);
+    player.stop();
   });
 
   it('auditions a single note of an instrument at once', () => {
@@ -345,6 +384,23 @@ describe('Player', () => {
       player.setSong(mk({ drive: 9, mix: 0.5, tone: 4000 }));
       player.preview('i');
       expect(reverbs).toBe(3);
+    });
+
+    it('updates an insert reverb tone/mix in place and rebuilds when its impulse shape changes', () => {
+      const ctx = makeContext();
+      let convolvers = 0;
+      const create = ctx.createConvolver;
+      ctx.createConvolver = () => { convolvers++; return create(); };
+      const mk = (r) => fxSong({ chain: [{ kind: 'reverb', ...r }] });
+      const player = new Player(ctx, mk({ tone: 3000, mix: 0.25 }), { destination: ctx.destination });
+      player.preview('i');
+      expect(convolvers).toBe(2);
+      player.setSong(mk({ tone: 5000, mix: 0.4 }));
+      player.preview('i');
+      expect(convolvers).toBe(2);
+      player.setSong(mk({ seconds: 2.5, power: 3, tone: 5000, mix: 0.4 }));
+      player.preview('i');
+      expect(convolvers).toBe(4);
     });
 
     it('moves the master and send gains with the song', () => {

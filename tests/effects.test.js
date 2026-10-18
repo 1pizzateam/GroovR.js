@@ -6,7 +6,7 @@ class Param {
 }
 
 function makeContext() {
-  const ctx = { currentTime: 2, nodes: [] };
+  const ctx = { currentTime: 2, sampleRate: 1000, nodes: [] };
   const node = (kind, params = [], extra = {}) => {
     const n = { kind, edges: [], connect(to, out, inp) { this.edges.push([to, out, inp]); return to; }, ...extra };
     for (const p of params) n[p] = new Param();
@@ -15,6 +15,11 @@ function makeContext() {
   };
   ctx.createGain = () => node('gain', ['gain']);
   ctx.createDelay = (max) => node('delay', ['delayTime'], { max });
+  ctx.createConvolver = () => node('convolver', [], { buffer: null });
+  ctx.createBuffer = (channels, length, sampleRate) => {
+    const data = Array.from({ length: channels }, () => new Float32Array(length));
+    return { channels, length, sampleRate, getChannelData: (c) => data[c] };
+  };
   ctx.createBiquadFilter = () => node('filter', ['frequency', 'Q', 'gain', 'detune'], { type: 'lowpass' });
   ctx.createWaveShaper = () => node('shaper', [], { curve: null, oversample: 'none' });
   ctx.createOscillator = () => node('osc', ['frequency'], { type: 'sine', started: false, stopped: false, start() { this.started = true; }, stop() { this.stopped = true; } });
@@ -32,7 +37,7 @@ describe('effects', () => {
   it('builds every effect with an input and an output', () => {
     const nodes = [
       { kind: 'gain', value: 0.5 }, { kind: 'filter', type: 'lowpass', freq: 800, q: 2 },
-      { kind: 'delay' }, { kind: 'distortion' }, { kind: 'chorus' }, { kind: 'phaser' }, { kind: 'tremolo' },
+      { kind: 'delay' }, { kind: 'reverb' }, { kind: 'distortion' }, { kind: 'chorus' }, { kind: 'phaser' }, { kind: 'tremolo' },
       { kind: 'compressor' }, { kind: 'eq' }, { kind: 'stereo' },
     ];
     for (const n of nodes) {
@@ -119,6 +124,18 @@ describe('effects', () => {
     const gains = ctx.nodes.filter((n) => n.kind === 'gain').map((g) => g.gain.value);
     expect(gains).toContain(0.95);
     expect(gains.filter((g) => g === 0 || g === 1).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('builds a stereo impulse for the reverb effect and updates tone and mix in place', () => {
+    const ctx = makeContext();
+    const b = buildEffect(env(ctx), { kind: 'reverb', seconds: 0.5, power: 3, tone: 3200, mix: 0.4 });
+    const convolver = ctx.nodes.find((n) => n.kind === 'convolver');
+    const filter = ctx.nodes.find((n) => n.kind === 'filter');
+    expect(convolver.buffer.channels).toBe(2);
+    expect(convolver.buffer.length).toBe(500);
+    expect(filter.frequency.value).toBe(3200);
+    b.update({ kind: 'reverb', seconds: 0.5, power: 3, tone: 6000, mix: 0.7 }, 120);
+    expect(filter.frequency.targets.at(-1)[0]).toBe(6000);
   });
 
   it('modulates the chorus with opposite depths and stops its oscillator', () => {

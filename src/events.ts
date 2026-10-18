@@ -29,23 +29,27 @@ const byTime = (a: NoteEvent, b: NoteEvent) => a.time - b.time;
 /** Flattens tracks, clips and patterns into streams of notes. */
 export function buildTimeline(song: Song): Timeline {
   const patterns = new Map(song.patterns.map((p) => [p.id, p]));
+  const hasSolo = song.tracks.some((t) => t.solo);
   const mainEvents: NoteEvent[] = [];
   const periodic: Stream[] = [];
   let length = 0;
   song.tracks.forEach((t, track) => {
+    const audible = !t.mute && (!hasSolo || Boolean(t.solo));
     const events: NoteEvent[] = [];
     let end = 0;
     for (const c of t.clips) {
       const p = patterns.get(c.pattern);
       if (!p) continue;
       end = Math.max(end, c.start + p.length);
-      for (const n of p.notes) events.push({ time: c.start + n.time, duration: n.duration, pitch: n.pitch, velocity: n.velocity, track });
+      if (audible)
+        for (const n of p.notes) events.push({ time: c.start + n.time, duration: n.duration, pitch: n.pitch, velocity: n.velocity, track });
     }
     events.sort(byTime);
-    if (t.period) periodic.push({ events, loopEvents: events, span: t.period, length: t.period });
-    else {
+    if (t.period) {
+      if (audible) periodic.push({ events, loopEvents: events, span: t.period, length: t.period });
+    } else {
       length = Math.max(length, end);
-      mainEvents.push(...events);
+      if (audible) mainEvents.push(...events);
     }
   });
   mainEvents.sort(byTime);

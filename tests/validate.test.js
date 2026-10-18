@@ -53,11 +53,16 @@ describe('validateSong', () => {
     expect(validateSong(s)).toHaveLength(3);
   });
 
-  it('rejects invalid notes and periods', () => {
+  it('rejects invalid notes, periods, mute and solo flags', () => {
     const s = song();
+    s.tracks[0].mute = true;
+    s.tracks[0].solo = false;
+    expect(validateSong(s)).toEqual([]);
     s.patterns[0].notes[0].duration = 0;
     s.tracks[0].period = -1;
-    expect(validateSong(s)).toHaveLength(2);
+    s.tracks[0].mute = 'yes';
+    s.tracks[0].solo = 1;
+    expect(validateSong(s)).toHaveLength(4);
   });
 
   it('rejects invalid layers, oscillators and expressions', () => {
@@ -78,14 +83,14 @@ describe('validateSong', () => {
 
   it('accepts instrument and master effects and rejects broken ones', () => {
     const s = song();
-    const all = ['delay', 'distortion', 'chorus', 'phaser', 'tremolo', 'compressor', 'eq', 'stereo'].map((kind) => ({ kind }));
+    const all = ['delay', 'reverb', 'distortion', 'chorus', 'phaser', 'tremolo', 'compressor', 'eq', 'stereo'].map((kind) => ({ kind }));
     s.instruments[0].fx = { chain: [...all, { kind: 'delay', time: 0.75, mix: 0.4, bypass: true }], gain: 0.9, send: 0.3, out: 'amp' };
     s.master = { chain: [{ kind: 'compressor', threshold: -12 }, { kind: 'eq', high: 2 }], gain: 1 };
     s.buses[0].chain.push({ kind: 'chorus', rate: 2 });
     expect(validateSong(s)).toEqual([]);
 
     const bad = song();
-    bad.instruments[0].fx = { chain: [{ kind: 'reverb' }, { kind: 'delay', mix: 'lots' }, { kind: 'tremolo', bypass: 1 }], out: 'nope', send: 'x' };
+    bad.instruments[0].fx = { chain: [{ kind: 'flanger' }, { kind: 'delay', mix: 'lots' }, { kind: 'tremolo', bypass: 1 }], out: 'nope', send: 'x' };
     bad.master = { chain: 'none' };
     expect(validateSong(bad)).toHaveLength(6);
     expect(validateSong({ ...song(), master: 5 })).toHaveLength(1);

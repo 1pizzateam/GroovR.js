@@ -9,6 +9,7 @@ const EFFECT_PARAMS: Record<string, string[]> = {
   gain: ["value"],
   filter: ["freq", "q"],
   delay: ["time", "feedback", "tone", "mix"],
+  reverb: ["seconds", "power", "tone", "mix"],
   distortion: ["drive", "hardness", "tone", "level", "mix"],
   chorus: ["rate", "delay", "depth", "mix"],
   phaser: ["rate", "freq", "depth", "feedback", "mix"],
@@ -132,6 +133,8 @@ export function validateSong(data: unknown): string[] {
   for (const t of s.tracks) {
     if (!instruments.has(t.instrument)) errors.push(`track ${t.id}: unknown instrument ${t.instrument}`);
     if (t.period !== undefined && (!isNum(t.period) || t.period <= 0)) errors.push(`track ${t.id}: invalid period`);
+    if (t.mute !== undefined && typeof t.mute !== "boolean") errors.push(`track ${t.id}: mute must be true or false`);
+    if (t.solo !== undefined && typeof t.solo !== "boolean") errors.push(`track ${t.id}: solo must be true or false`);
     for (const c of t.clips ?? [])
       if (!patterns.has(c.pattern) || !isNum(c.start) || c.start < 0) errors.push(`track ${t.id}: invalid clip`);
   }

@@ -1,3 +1,4 @@
+import { Rand } from "@1pizzateam/spock";
 import type { EffectNode } from "./song.js";
 
 /** One effect, ready to be wired: sound goes into `input` and comes out of `output`. */
@@ -121,6 +122,37 @@ function buildDelay(env: FxEnv, n: Of<"delay">): Built {
   apply(n, env.bpm);
   s.done();
   return { input: w.input, output: w.output, update: (x, bpm) => apply(x as Of<"delay">, bpm), dispose: noop };
+}
+
+/** Impulse response parameters of a reverb effect, which decide when a new convolver buffer is needed. */
+export const reverbShape = (n: Of<"reverb">) => `${n.seconds ?? 1.8}:${n.power ?? 2.5}`;
+
+function buildReverb(env: FxEnv, n: Of<"reverb">): Built {
+  const { ctx } = env;
+  const w = dryWet(ctx);
+  const convolver = ctx.createConvolver();
+  const tone = ctx.createBiquadFilter();
+  tone.type = "lowpass";
+  const seconds = clamp(n.seconds ?? 1.8, 0.1, 6);
+  const power = clamp(n.power ?? 2.5, 0.5, 6);
+  const length = Math.max(1, Math.round(ctx.sampleRate * seconds));
+  const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = impulse.getChannelData(c);
+    for (let i = 0; i < length; i++) data[i] = Rand.float(-1, 1) * (1 - i / length) ** power;
+  }
+  convolver.buffer = impulse;
+  w.input.connect(convolver);
+  convolver.connect(tone);
+  tone.connect(w.wet);
+  const s = setter(ctx);
+  const apply = (x: Of<"reverb">) => {
+    s.set(tone.frequency, clamp(x.tone ?? 4000, 200, 16000));
+    w.mix(s, x.mix ?? 0.3);
+  };
+  apply(n);
+  s.done();
+  return { input: w.input, output: w.output, update: (x) => apply(x as Of<"reverb">), dispose: noop };
 }
 
 /** Whether a distortion needs a low-pass or a dry path of its own, which decides what gets built. */
@@ -330,6 +362,8 @@ export function buildEffect(env: FxEnv, node: EffectNode): Built {
       return buildFilter(env, node);
     case "delay":
       return buildDelay(env, node);
+    case "reverb":
+      return buildReverb(env, node);
     case "distortion":
       return buildDistortion(env, node);
     case "chorus":

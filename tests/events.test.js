@@ -38,6 +38,30 @@ describe('buildTimeline', () => {
     const { main } = buildTimeline({ ...song, loopStart: undefined });
     expect(main.span).toBe(8);
   });
+
+  it('mutes and solos tracks while preserving song length', () => {
+    const muted = buildTimeline({
+      ...song,
+      tracks: [
+        { ...song.tracks[0], mute: true },
+        { ...song.tracks[1], mute: true },
+      ],
+    });
+    expect(muted.main.events).toEqual([]);
+    expect(muted.main.length).toBe(8);
+    expect(muted.periodic).toEqual([]);
+
+    const soloed = buildTimeline({
+      ...song,
+      tracks: [
+        { ...song.tracks[0] },
+        { ...song.tracks[1], solo: true },
+      ],
+    });
+    expect(soloed.main.events).toEqual([]);
+    expect(soloed.main.length).toBe(8);
+    expect(soloed.periodic).toHaveLength(1);
+  });
 });
 
 describe('pitch conversion', () => {

@@ -1,7 +1,7 @@
 import { Rand } from "@1pizzateam/spock";
 import { buildTimeline, midiToFrequency } from "./events.js";
 import type { NoteEvent, Stream, Timeline } from "./events.js";
-import { buildChain, distortionShape, softClip } from "./effects.js";
+import { buildChain, distortionShape, reverbShape, softClip } from "./effects.js";
 import type { Chain, FxEnv } from "./effects.js";
 import type { Bus, EffectNode, Expr, FilterType, Fx, Instrument, NoiseLayer, Point, Song, VoiceLayer } from "./song.js";
 
@@ -46,13 +46,27 @@ const usesFx = (fx: Fx | undefined, master = false): fx is Fx =>
 
 /** What decides the shape of the audio graph: which effects exist, in what order and where they send. */
 function structureKey(song: Song): string {
-  const kinds = (nodes: EffectNode[]) => nodes.map((n) => (n.bypass ? `-${n.kind}` : n.kind === "distortion" ? `distortion:${distortionShape(n)}` : n.kind));
+  const kinds = (nodes: EffectNode[]) =>
+    nodes.map((n) =>
+      n.bypass
+        ? `-${n.kind}`
+        : n.kind === "distortion"
+          ? `distortion:${distortionShape(n)}`
+          : n.kind === "reverb"
+            ? `reverb:${reverbShape(n)}`
+            : n.kind,
+    );
   return JSON.stringify([
     [song.reverb.seconds, song.reverb.power],
     song.buses.map((b) => [b.id, kinds(b.chain)]),
     song.instruments.filter((i) => usesFx(i.fx)).map((i) => [i.id, kinds(i.fx!.chain), i.fx!.out ?? ""]),
     usesFx(song.master, true) ? kinds(song.master!.chain) : null,
   ]);
+}
+
+function audibilityKey(song: Song): string {
+  const hasSolo = song.tracks.some((t) => t.solo);
+  return song.tracks.map((t) => (!t.mute && (!hasSolo || Boolean(t.solo)) ? "1" : "0")).join("");
 }
 
 interface StreamState {
@@ -90,11 +104,13 @@ export class Player {
   private instruments = new Map<string, Instrument>();
   private bus: Level | null = null;
   private busKey = "";
+  private audibilityKey = "";
   private options: PlayerOptions;
   private noise: AudioBuffer;
   private timer: ReturnType<typeof setInterval> | null = null;
   private streams: StreamState[] = [];
   private startTime = 0;
+  private startOffset = 0;
   // Beat up to which notes were already handed to the audio clock
   private scheduledTo = 0;
   private impulse: { key: string; buffer: AudioBuffer } | null = null;
@@ -128,18 +144,33 @@ export class Player {
   /** Current position in beats, wrapped by the loop. */
   get position(): number {
     if (!this.playing) return 0;
-    const beats = ((this.ctx.currentTime - this.startTime) * this.song.bpm) / 60;
+    const beats = Math.max(this.startOffset, ((this.ctx.currentTime - this.startTime) * this.song.bpm) / 60);
     const { length, span } = this.timeline.main;
     if (!this.song.loop || span <= 0 || beats < length) return Math.max(0, beats);
     return length - span + ((beats - length) % span);
   }
 
   setSong(song: Song): void {
+    const pos = this.playing ? this.position : 0;
+    const aKey = audibilityKey(song);
+    const audibilityChanged = this.playing && aKey !== this.audibilityKey;
     this.song = song;
     this.timeline = buildTimeline(song);
     this.instruments = new Map(song.instruments.map((i) => [i.id, i]));
-    // The buses only change with the mix settings, so editing notes or patches keeps the sounding notes on theirs
+    this.audibilityKey = aKey;
     const key = structureKey(song);
+    if (audibilityChanged) {
+      this.release(this.bus, 0.02);
+      this.bus = null;
+      this.busKey = key;
+      this.startOffset = pos;
+      this.scheduledTo = pos;
+      this.startTime = this.ctx.currentTime + 0.01 - (pos * 60) / song.bpm;
+      this.streams = this.seek(true);
+      this.schedule();
+      return;
+    }
+    // The buses only change with the mix settings, so editing notes or patches keeps the sounding notes on theirs
     if (this.bus && key !== this.busKey) {
       if (this.playing) this.releaseLater(this.bus);
       else this.release(this.bus, 0);
@@ -170,12 +201,13 @@ export class Player {
     g.linearRampToValueAtTime(level, now + delay + seconds);
   }
 
-  /** Starts the song `delay` seconds from now. */
-  play(delay = 0.05): void {
+  /** Starts the song `delay` seconds from now, optionally starting at `offset` beats. */
+  play(delay = 0.05, offset = 0): void {
     if (this.playing) return;
-    this.scheduledTo = 0;
-    this.streams = this.seek();
-    this.startTime = this.ctx.currentTime + delay;
+    this.startOffset = Math.max(0, offset);
+    this.scheduledTo = this.startOffset;
+    this.streams = this.seek(true);
+    this.startTime = this.ctx.currentTime + delay - (this.startOffset * 60) / this.song.bpm;
     this.timer = setInterval(() => this.schedule(), INTERVAL_MS);
     this.schedule();
   }
@@ -212,7 +244,7 @@ export class Player {
   }
 
   /** Streams positioned on the first note not yet scheduled, so an edited song carries on without repeating notes. */
-  private seek(): StreamState[] {
+  private seek(inclusive = false): StreamState[] {
     const at = this.scheduledTo;
     return [this.timeline.main, ...this.timeline.periodic].map((stream) => {
       const state: StreamState = { stream, cursor: 0, pass: 0, done: false };
@@ -222,7 +254,11 @@ export class Player {
       }
       const list = state.pass === 0 ? stream.events : stream.loopEvents;
       const offset = state.pass > 0 ? state.pass * stream.span : 0;
-      while (state.cursor < list.length && list[state.cursor].time + offset <= at && at > 0) state.cursor++;
+      while (state.cursor < list.length && at > 0) {
+        const noteTime = list[state.cursor].time + offset;
+        if (inclusive ? noteTime >= at : noteTime > at) break;
+        state.cursor++;
+      }
       return state;
     });
   }
@@ -232,7 +268,9 @@ export class Player {
     const horizon = this.ctx.currentTime + LOOKAHEAD;
     this.scheduledTo = Math.max(this.scheduledTo, (horizon - this.startTime) / beat);
     for (const s of this.streams) this.pump(s, horizon, beat);
-    if (this.streams.every((s) => s.done) && this.timer) {
+    const loops = this.song.loop && this.timeline.main.span > 0;
+    const elapsed = (this.ctx.currentTime - this.startTime) / beat;
+    if (!loops && this.streams.every((s) => s.done) && elapsed >= this.timeline.main.length && this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
