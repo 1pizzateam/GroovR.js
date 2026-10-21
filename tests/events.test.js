@@ -1,4 +1,4 @@
-import { buildTimeline, midiToFrequency, frequencyToMidi } from '../build/es6/events.js';
+import { buildTimeline, midiToFrequency, frequencyToMidi, SONG_FORMAT, SONG_VERSION } from '../build/es6/groovr.js';
 
 const note = (time) => ({ time, duration: 1, pitch: 60, velocity: 1 });
 

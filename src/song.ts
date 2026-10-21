@@ -24,8 +24,23 @@ export interface Osc {
   pitch?: Point[];
   // Cents
   detune?: Expr;
+  // Mix gain of this voice, 1 when omitted
+  gain?: Expr;
   // Skip the layer's filter and soft clip
   direct?: boolean;
+}
+
+export interface Adsr {
+  // Attack time in seconds
+  attack: Expr;
+  // Decay time in seconds
+  decay: Expr;
+  // Sustain level in [0, 1]
+  sustain: Expr;
+  // Release time in seconds after note duration
+  release: Expr;
+  // Peak level for amp (defaults to note velocity) or modulation amount in Hz for filter
+  amount?: Expr;
 }
 
 export interface Filter {
@@ -33,11 +48,21 @@ export interface Filter {
   q?: number;
   freq?: number;
   envelope?: Point[];
+  adsr?: Adsr;
 }
 
 export interface Lfo {
   freq: number;
   base: number;
+  depth: number;
+}
+
+export type LfoTarget = "pitch" | "cutoff" | "amp";
+
+export interface ModLfo {
+  target?: LfoTarget;
+  type?: Waveform;
+  rate: number;
   depth: number;
 }
 
@@ -57,10 +82,12 @@ export interface VoiceLayer {
   // Soft clipping of the voices, as the hardness of the curve (tanh of hardness times the signal). true means 4
   shaper?: boolean | number;
   lfo?: Lfo;
+  lfos?: ModLfo[];
   vibrato?: Vibrato;
   // Overrides the note velocity inside this layer's expressions
   velocity?: Expr;
-  envelope: Point[];
+  envelope?: Point[];
+  adsr?: Adsr;
   filter?: Filter;
   voices: Osc[];
 }
@@ -128,9 +155,6 @@ export type EffectNode = Bypassable &
     // pan from -1 to 1, width from 0 (mono) to 2
     | { kind: "stereo"; pan?: number; width?: number }
   );
-
-/** @deprecated The bus chain accepts every effect. */
-export type BusNode = EffectNode;
 
 /** A processing chain feeding the dry level bus, with its own reverb send. */
 export interface Bus {

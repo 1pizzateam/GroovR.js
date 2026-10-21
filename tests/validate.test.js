@@ -1,4 +1,4 @@
-import { validateSong, parseSong, migrateSong } from '../build/es6/validate.js';
+import { validateSong, parseSong, migrateSong } from '../build/es6/groovr.js';
 
 const song = () => ({
   format: 'groovr-song',
@@ -72,6 +72,49 @@ describe('validateSong', () => {
     s.instruments[0].layers[1].type = 'bad';
     s.instruments[0].layers.push({ kind: 'other' });
     expect(validateSong(s).length).toBeGreaterThanOrEqual(4);
+
+    const s2 = song();
+    s2.instruments[0].layers = [
+      null,
+      {
+        kind: 'voice',
+        duration: null,
+        vibrato: { rate: 'fast', depth: 10 },
+        envelope: [],
+        filter: { type: 'bad', envelope: [] },
+        voices: [],
+      },
+      {
+        kind: 'voice',
+        duration: 1,
+        vibrato: { rate: 5, depth: 'deep' },
+        lfos: [{ rate: 5, depth: 10, target: 'bad' }],
+        adsr: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 'bad' },
+        filter: { adsr: 'bad' },
+        voices: [{ pitch: [] }, { freq: 440, detune: 'bad', gain: 'bad' }],
+      },
+      {
+        kind: 'voice',
+        duration: 1,
+        adsr: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.2, amount: 0.8 },
+        filter: { freq: 800, adsr: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.2, amount: 400 } },
+        lfos: [{ target: 'pitch', type: 'sine', rate: 5, depth: 10 }],
+        voices: [{ freq: 440, gain: 0.8 }],
+      },
+      {
+        kind: 'noise',
+        type: 'lowpass',
+        length: [1],
+        envelope: [],
+        filterEnvelope: [],
+      },
+    ];
+    s2.instruments.push({ id: 'empty', layers: [] });
+    s2.patterns.push({ id: 'bad-pat', length: 0, notes: null });
+    s2.tracks.push({ id: 'bad-trk', instrument: 'lead', clips: null });
+    s2.buses.push({ id: 'bad-bus', gain: 'loud', wet: 0, chain: [{ kind: 'gain' }] });
+    s2.master = { chain: [], gain: 'bad' };
+    expect(validateSong(s2).length).toBeGreaterThanOrEqual(16);
   });
 
   it('rejects invalid buses and loopStart', () => {
@@ -124,6 +167,10 @@ describe('validateSong', () => {
     expect(validateSong(migrated)).toEqual([]);
     expect(parseSong(JSON.stringify(old)).buses[0].chain[1].kind).toBe('distortion');
     expect(migrateSong(null)).toBeNull();
+    expect(migrateSong({ buses: [null, { chain: null }], instruments: [null, { layers: [null] }] })).toEqual({
+      buses: [null, { chain: null }],
+      instruments: [null, { layers: [null] }],
+    });
   });
 
   it('accepts rack state and rejects a broken one', () => {
@@ -131,6 +178,8 @@ describe('validateSong', () => {
     s.instruments[0].rack = { template: 'sfx-synth', values: { level: 1.2, wave: 'sawtooth' } };
     expect(validateSong(s)).toEqual([]);
     s.instruments[0].rack = { template: 'guitar', values: { level: null } };
+    expect(validateSong(s)).toHaveLength(1);
+    s.instruments[0].rack = { template: 'guitar', values: null };
     expect(validateSong(s)).toHaveLength(1);
   });
 

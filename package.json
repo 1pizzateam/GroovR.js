@@ -18,11 +18,16 @@
     "type": "git",
     "url": "git+https://github.com/1pizzateam/GroovR.js.git"
   },
+  "bugs": {
+    "url": "https://github.com/1pizzateam/GroovR.js/issues"
+  },
   "license": "MIT",
   "author": {
     "name": "Ludovic Cluber"
   },
+  "contributors": [],
   "scripts": {
+    "prebuild": "npm install",
     "build": "npm run build:lib && npm run test",
     "build:lib": "node ./scripts/clear.js && tsc && npm run rollup && node ./scripts/copy.js",
     "rollup": "rollup --config rollup.config.mjs",
@@ -36,7 +41,7 @@
     "node": ">= 22"
   },
   "dependencies": {
-    "@1pizzateam/spock": "4.3.0"
+    "@1pizzateam/spock": "4.4.0"
   },
   "devDependencies": {
     "@types/jest": "29.5.14",

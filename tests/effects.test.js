@@ -1,4 +1,4 @@
-import { buildChain, buildEffect, softClip } from '../build/es6/effects.js';
+import { buildChain, buildEffect, distortionShape, reverbShape, softClip } from '../build/es6/groovr.js';
 
 class Param {
   constructor() { this.value = 0; this.targets = []; }
@@ -95,15 +95,18 @@ describe('effects', () => {
     buildEffect(env(ctx2), { kind: 'distortion', mix: 0.5, tone: 0 });
     expect(ctx2.nodes.filter((n) => n.kind === 'filter')).toHaveLength(0);
     expect(ctx2.nodes.filter((n) => n.kind === 'gain')).toHaveLength(2 + 4);
+    expect(distortionShape({ kind: 'distortion' })).toBe('true:false:4x');
+    expect(reverbShape({})).toBe('1.8:2.5');
   });
 
   it('moves the distortion drive, level and curve in place', () => {
     const ctx = makeContext();
-    const d = buildEffect(env(ctx), { kind: 'distortion', drive: 5, hardness: 2, level: 0.5 });
+    const d = buildEffect(env(ctx), { kind: 'distortion', drive: 5, hardness: 2, level: 0.5, mix: 0.6 });
     const shaper = ctx.nodes.find((n) => n.kind === 'shaper');
     expect(shaper.curve).toBe(softClip(2));
     d.update({ kind: 'distortion', drive: 20, hardness: 6, level: 0.3 }, 120);
-    expect(d.input.gain.targets.at(-1)[0]).toBe(20);
+    const pre = ctx.nodes.find((n) => n.kind === 'gain' && n.edges.some(([to]) => to === shaper));
+    expect(pre.gain.targets.at(-1)[0]).toBe(20);
     expect(shaper.curve).toBe(softClip(6));
   });
 
@@ -172,6 +175,9 @@ describe('effects', () => {
     expect(b.input.gain.value).toBeCloseTo(0.7);
     expect(ctx.nodes.find((n) => n.kind === 'gain' && n !== b.input).gain.value).toBeCloseTo(0.3);
     expect(b.input).toBe(b.output);
+    const v = buildEffect(env(ctx), { kind: 'vibrato' });
+    expect(v.input.delayTime.value).toBeCloseTo(0.01);
+    v.dispose();
   });
 
   it('sets the compressor and the three EQ bands', () => {

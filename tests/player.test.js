@@ -1,4 +1,4 @@
-import { Player } from '../build/es6/player.js';
+import { Player } from '../build/es6/groovr.js';
 
 class Param {
   constructor() { this.calls = []; this.value = 0; }
@@ -124,31 +124,45 @@ describe('Player', () => {
 
   it('carries on without repeating notes when the song is replaced while playing', () => {
     const ctx = makeContext();
-    const player = new Player(ctx, song(), { destination: ctx.destination });
-    run(ctx, player, 1);
-    const before = ctx.oscillators.length;
-    player.setSong(song());
-    expect(player.playing).toBe(true);
-    expect(ctx.oscillators.length).toBe(before);
-    expect(player.position).toBeGreaterThan(0);
-    player.stop();
-    expect(player.playing).toBe(false);
+    const timeouts = [];
+    const realTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (fn) => { timeouts.push(fn); return { unref() {} }; };
+    try {
+      const player = new Player(ctx, song(), { destination: ctx.destination });
+      run(ctx, player, 3);
+      player.play();
+      const before = ctx.oscillators.length;
+      player.setSong(song());
+      expect(player.playing).toBe(true);
+      expect(ctx.oscillators.length).toBe(before);
+      expect(player.position).toBeGreaterThan(0);
+      player.setSong(song({ loop: false }));
+      const changed = song({ reverb: { seconds: 0.5, power: 3, return: 0.5 } });
+      player.setSong(changed);
+      player.stop();
+      expect(player.playing).toBe(false);
+      while (timeouts.length) timeouts.shift()();
+    } finally {
+      globalThis.setTimeout = realTimeout;
+    }
   });
 
   it('mutes and unmutes tracks in place without restarting the song or duplicating scheduled notes', () => {
     const ctx = makeContext();
     const s = song();
+    s.instruments.push({ id: 'i2', layers: [{ kind: 'voice', duration: 0.2, envelope: [[0, 1], [0.2, 0.001, 'exp']], filter: { type: 'lowpass', freq: 600 }, voices: [{ freq: 220 }] }] });
+    s.tracks.push({ id: 't2', instrument: 'i2', clips: [{ pattern: 'p', start: 0 }] });
     const player = new Player(ctx, s, { destination: ctx.destination });
     run(ctx, player, 1);
     const beforeCount = ctx.oscillators.length;
     const beforePos = player.position;
-    const muted = song();
+    const muted = structuredClone(s);
     muted.tracks[0].mute = true;
     player.setSong(muted);
     expect(player.playing).toBe(true);
     expect(player.position).toBeCloseTo(beforePos);
     expect(ctx.oscillators.length).toBe(beforeCount);
-    player.setSong(song());
+    player.setSong(s);
     expect(player.position).toBeCloseTo(beforePos);
     expect(ctx.oscillators.length).toBe(beforeCount);
     player.stop();
@@ -333,6 +347,11 @@ describe('Player', () => {
       const masterIn = gains.find((g) => g.edges.includes(chainIn));
       expect(gains.filter((g) => g.edges.includes(masterIn)).length).toBe(2);
       expect(gains.filter((g) => g.edges.includes(ctx.destination))).toEqual([out]);
+
+      const sBypassed = song({ master: { chain: [{ kind: 'gain', value: 0.77, bypass: true }], gain: 0.85 } });
+      player.setSong(sBypassed);
+      player.preview('i');
+      expect(gains.some((g) => g.gain.value === 0.85)).toBe(true);
     });
 
     it('moves effect parameters in place when only their values change, and rebuilds when the structure changes', () => {
@@ -442,13 +461,62 @@ describe('Player', () => {
       expect(oscs.some((o) => o.frequency.value === 26)).toBe(true);
 
       const s2 = fxSong({
-        chain: [{ kind: 'distortion', drive: 8, hardness: 2, tone: 4000, level: 0.6, mix: 0.8 }],
+        chain: [{ kind: 'distortion', drive: 8, hardness: 2, tone: 4000, level: 0.6, mix: 0.8 }, { kind: 'vibrato' }],
       });
-      delete s2.instruments[0].layers[0].shaper;
+      s2.instruments[0].layers[0].shaper = 3;
       delete s2.instruments[0].layers[0].vibrato;
+      delete s2.instruments[0].layers[0].lfo;
+      delete s2.instruments[0].layers[0].filter;
+      delete s2.instruments[0].layers[0].wet;
+      delete s2.instruments[0].layers[0].out;
+      s2.tracks = [];
       player.setSong(s2);
       player.preview('i');
       expect(shapers.some((w) => w.oversample === '2x')).toBe(true);
+    });
+
+    it('schedules ADSR amp and filter envelopes, per-voice gain and 3-target LFOs', () => {
+      const ctx = makeContext();
+      const gains = withGains(ctx);
+      const filters = [];
+      const createFilter = ctx.createBiquadFilter;
+      ctx.createBiquadFilter = () => { const f = createFilter(); filters.push(f); return f; };
+
+      const s = song({
+        instruments: [{
+          id: 'syn',
+          layers: [{
+            kind: 'voice',
+            duration: { d: 1 },
+            adsr: { attack: 0.02, decay: 0.1, sustain: 0.5, release: 0.2 },
+            filter: { type: 'lowpass', q: 4, freq: 600, adsr: { attack: 0.01, decay: 0.1, sustain: 0.25, release: 0.15, amount: 1200 } },
+            lfos: [
+              { target: 'pitch', type: 'triangle', rate: 6, depth: 15 },
+              { target: 'cutoff', type: 'sawtooth', rate: 2, depth: 400 },
+              { target: 'amp', type: 'square', rate: 8, depth: 0.4 },
+              { rate: 5, depth: 10 },
+            ],
+            voices: [
+              { type: 'sawtooth', freq: { f: 1 }, gain: 1 },
+              { type: 'square', freq: { f: 2 }, gain: 0.5 },
+              { type: 'sine', freq: { f: 0.5 }, gain: 0 },
+            ],
+          }],
+        }],
+      });
+      const player = new Player(ctx, s, { destination: ctx.destination });
+      player.preview('syn', 69, 0.5, 0.8);
+      expect(filters.at(-1).frequency.calls.some((c) => c[0] === 'exp' && c[1] === 1800)).toBe(true);
+      expect(gains.some((g) => g.gain.value === 0.5)).toBe(true);
+      expect(ctx.oscillators.some((o) => o.type === 'triangle' && o.frequency.value === 6)).toBe(true);
+      expect(ctx.oscillators.some((o) => o.type === 'sawtooth' && o.frequency.value === 2)).toBe(true);
+      expect(ctx.oscillators.some((o) => o.type === 'square' && o.frequency.value === 8)).toBe(true);
+
+      const sShort = structuredClone(s);
+      delete sShort.instruments[0].layers[0].filter.freq;
+      delete sShort.instruments[0].layers[0].filter.adsr.amount;
+      player.setSong(sShort);
+      player.preview('syn', 69, 0.05, 0.8);
     });
   });
 
