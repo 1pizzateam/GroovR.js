@@ -1,6 +1,6 @@
 {
   "name": "@1pizzateam/groovr",
-  "version": "v0.1.0-alpha.1",
+  "version": "0.1.0-alpha.1",
   "description": "Song format and Web Audio playback engine for games, authored with the Cadenza editor",
   "keywords": ["music", "audio", "web-audio", "synth", "sequencer", "game", "typescript"],
   "homepage": "https://github.com/1pizzateam/GroovR.js",
