@@ -4,12 +4,11 @@
 
 ## Synopsis
 
-[GroovR.js](https://github.com/1pizzateam/GroovR.js) is an open source declarative song format and Web Audio synthesis/playback engine for games, authored with the Cadenza editor.
+[GroovR.js](https://github.com/1pizzateam/GroovR.js) is an open source Web Audio synthesis/playback engine.
 
 - Zero external audio assets — synthesizes oscillators, noise percussion, envelopes, buses, and effects live via Web Audio API
 - Lookahead scheduling with loop points, independent periodic tracks, and seamless live hot-reloading (`setSong`)
 - Full insert/bus/master effects rack: gain, filter, tempo-synced delay, convolution reverb, soft-clipping distortion, stereo chorus, 4-stage phaser, tremolo, vibrato, compressor, 3-band EQ, and stereo pan/width
-- Powered by `@1pizzateam/spock` math utilities
 
 ## Installation
 
