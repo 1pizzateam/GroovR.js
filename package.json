@@ -1,6 +1,6 @@
 {
   "name": "@1pizzateam/groovr",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Song format and Web Audio playback engine for games, authored with the Cadenza editor",
   "keywords": ["music", "audio", "web-audio", "synth", "sequencer", "game", "typescript"],
   "homepage": "https://github.com/1pizzateam/GroovR.js",
@@ -41,7 +41,7 @@
     "node": ">= 22"
   },
   "dependencies": {
-    "@1pizzateam/spock": "4.4.0"
+    "@1pizzateam/spock": "4.5.0"
   },
   "devDependencies": {
     "@types/jest": "29.5.14",

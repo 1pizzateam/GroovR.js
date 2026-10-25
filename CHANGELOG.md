@@ -1,3 +1,10 @@
+Version 0.1.0-alpha.3 (October 25th 2026)
+-----------------------------
+ * Upgraded `@1pizzateam/spock` to `4.5.0`:
+    * Use `Rand.next()` in `playNote()` for per-layer uniform `[0, 1)` random trigger draws (`r`, `r2`, `r3`).
+    * Delegate mid-segment breakpoint envelope interpolation in `envelope()` and wave-shaper curve domain mapping in `softClip()` to `Utils.map()`.
+    * Delegate symmetric stereo pan clamping in `buildStereo()` to `Utils.clampToExtent()`.
+
 Version 0.1.0-alpha.2 (October 24th 2026)
 -----------------------------
  * `Player` & `playNote` (`ScheduledNote`):

@@ -8,7 +8,7 @@ export function softClip(hardness: number): Float32Array<ArrayBuffer> {
   let curve = curves.get(hardness);
   if (!curve) {
     curve = new Float32Array(256);
-    for (let i = 0; i < 256; i++) curve[i] = Math.tanh((i / 127.5 - 1) * hardness);
+    for (let i = 0; i < 256; i++) curve[i] = Math.tanh(Utils.map(i, 0, 255, -1, 1) * hardness);
     curves.set(hardness, curve);
   }
   return curve;

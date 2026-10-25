@@ -178,13 +178,13 @@ export class Player {
     this.instruments.clear();
     for (const i of song.instruments) this.instruments.set(i.id, i);
     const key = structureKey(song);
-    if (this.bus && key !== this.busKey) {
+    if (this.bus && key !== this.busKey)
       if (this.playing) this.bus = this.swapBus(this.bus, song);
       else {
         this.release(this.bus, 0);
         this.bus = null;
       }
-    } else if (this.bus) this.updateParams(this.bus, song);
+    else if (this.bus) this.updateParams(this.bus, song);
     this.busKey = key;
     const pKey = patchKey(song);
     if (this.playing)

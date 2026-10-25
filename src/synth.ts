@@ -57,8 +57,7 @@ function envelope(param: AudioParam, t: number, points: Point[], trig: Trigger, 
     const value = evaluate(p[1], trig);
     const ramp = p[2] ?? "linear";
     if (!anchored && at > now) {
-      const u = (now - prevTime) / (at - prevTime);
-      const cur = ramp === "hold" ? prevVal : prevVal + (value - prevVal) * u;
+      const cur = ramp === "hold" ? prevVal : Utils.map(now, prevTime, at, prevVal, value);
       param.setValueAtTime(ramp === "exp" ? Math.max(cur, MIN_EXP_TARGET) : cur, now);
       anchored = true;
     }
@@ -339,9 +338,9 @@ export function playNote(
   for (let i = 0; i < inst.layers.length; i++) {
     const layer = inst.layers[i];
     trig.v = v;
-    trig.r = Rand.float(0, 1);
-    trig.r2 = Rand.float(0, 1);
-    trig.r3 = Rand.float(0, 1);
+    trig.r = Rand.next();
+    trig.r2 = Rand.next();
+    trig.r3 = Rand.next();
     if (layer.velocity !== undefined) trig.v = evaluate(layer.velocity, trig);
     const layerStop =
       layer.kind === "voice"
