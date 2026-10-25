@@ -4,12 +4,11 @@ import type { NoteEvent, Stream, Timeline } from "./events.js";
 import { buildChain, createImpulse, distortionShape, reverbShape } from "./effects.js";
 import type { Chain, FxEnv } from "./effects.js";
 import { createNoise, playNote } from "./synth.js";
-import type { SynthRouting, Trigger } from "./synth.js";
+import type { ScheduledNote, SynthRouting, Trigger } from "./synth.js";
 import type { Bus, EffectNode, Fx, Instrument, Song } from "./song.js";
 
 const LOOKAHEAD = 3;
 const INTERVAL_MS = 100;
-const RELEASE_DELAY_MS = 30000;
 
 // An effects chain as built, with what is needed to move its parameters later
 interface ChainRef {
@@ -27,7 +26,7 @@ interface Level {
   buses: Map<string, AudioNode>;
   // Input of each instrument's effects chain
   fx: Map<string, AudioNode>;
-  gates: Map<string, { inst: string; node: GainNode }>;
+  gates: Map<string, { inst: string; key: string; node: GainNode }>;
   chains: ChainRef[];
 }
 
@@ -57,6 +56,18 @@ function structureKey(song: Song): string {
     song.buses.map((b) => [b.id, kinds(b.chain)]),
     song.instruments.filter((i) => usesFx(i.fx)).map((i) => [i.id, kinds(i.fx!.chain), i.fx!.out ?? "", usesPostFx(i, i.fx)]),
     usesFx(song.master, true) ? kinds(song.master!.chain) : null,
+  ]);
+}
+
+/** What decides the notes and patches scheduled onto the timeline. */
+function patchKey(song: Song): string {
+  return JSON.stringify([
+    song.bpm,
+    song.loop,
+    song.loopStart,
+    song.instruments,
+    song.patterns,
+    song.tracks.map((t) => [t.id, t.instrument, t.period, t.clips]),
   ]);
 }
 
@@ -99,6 +110,8 @@ export class Player {
   private instruments = new Map<string, Instrument>();
   private bus: Level | null = null;
   private busKey = "";
+  private patchKey = "";
+  private notes: ScheduledNote[] = [];
   private options: PlayerOptions;
   private noise: AudioBuffer;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -165,14 +178,19 @@ export class Player {
     this.instruments.clear();
     for (const i of song.instruments) this.instruments.set(i.id, i);
     const key = structureKey(song);
-    // The buses only change with the mix settings, so editing notes or patches keeps the sounding notes on theirs
     if (this.bus && key !== this.busKey) {
-      if (this.playing) this.releaseLater(this.bus);
-      else this.release(this.bus, 0);
-      this.bus = null;
+      if (this.playing) this.bus = this.swapBus(this.bus, song);
+      else {
+        this.release(this.bus, 0);
+        this.bus = null;
+      }
     } else if (this.bus) this.updateParams(this.bus, song);
     this.busKey = key;
-    if (this.playing) this.streams = this.seek();
+    const pKey = patchKey(song);
+    if (this.playing)
+      if (pKey !== this.patchKey) this.reschedule(song);
+      else this.streams = this.seek();
+    this.patchKey = pKey;
   }
 
   /** Plays one note of an instrument right now, to audition a patch. */
@@ -211,6 +229,9 @@ export class Player {
   stop(fade = 0.25): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    const now = this.ctx.currentTime;
+    for (const n of this.notes) if (n.when > now) n.cancel();
+    this.notes = [];
     this.release(this.bus, fade);
     this.bus = null;
   }
@@ -238,9 +259,38 @@ export class Player {
     }, Time.secToMillisec(fade) + 100));
   }
 
-  // A replaced bus keeps sounding until its scheduled notes have died away
-  private releaseLater(bus: Level): void {
-    unref(setTimeout(() => this.release(bus, 0.25), RELEASE_DELAY_MS));
+  /** Rewires active instrument gates onto a newly built level bus so effect bypass/chain changes take effect immediately. */
+  private swapBus(old: Level, song: Song): Level {
+    const next = this.createLevel(song);
+    const now = this.ctx.currentTime;
+    for (const [id, g] of old.gates) {
+      g.node.disconnect();
+      g.node.gain.setTargetAtTime(isInstrumentAudible(song, g.inst) ? 1 : 0, now, 0.015);
+      const dest = g.key === "wet" ? next.wetBus : (next.fx.get(g.inst) ?? ((g.key && next.buses.get(g.key)) || next.level));
+      g.node.connect(dest);
+      next.gates.set(id, g);
+    }
+    old.gates.clear();
+    this.release(old, 0.02);
+    return next;
+  }
+
+  /** Cancels future pre-scheduled notes, updates currently sounding notes in place, and re-schedules from now. */
+  private reschedule(song: Song): void {
+    const now = this.ctx.currentTime;
+    const kept: ScheduledNote[] = [];
+    for (const n of this.notes)
+      if (n.when > now) n.cancel();
+      else if (n.stopAt > now) {
+        const inst = this.instruments.get(n.inst);
+        if (inst) n.update(inst, song.bpm);
+        kept.push(n);
+      }
+    this.notes = kept;
+    const beat = 60 / song.bpm;
+    this.scheduledTo = Math.max(this.startOffset, (now - this.startTime) / beat);
+    this.streams = this.seek(now < this.startTime);
+    this.schedule();
   }
 
   /** Streams positioned on the first note not yet scheduled, so an edited song carries on without repeating notes. */
@@ -258,7 +308,7 @@ export class Player {
       else state.pass = Math.floor((at - stream.length) / stream.span) + 1;
     const list = state.pass === 0 ? stream.events : stream.loopEvents;
     const offset = state.pass > 0 ? state.pass * stream.span : 0;
-    while (state.cursor < list.length && at > 0) {
+    while (state.cursor < list.length) {
       const noteTime = list[state.cursor].time + offset;
       if (inclusive ? noteTime >= at : noteTime > at) break;
       state.cursor++;
@@ -267,12 +317,14 @@ export class Player {
   }
 
   private schedule(): void {
+    const now = this.ctx.currentTime;
+    this.notes = this.notes.filter((n) => n.stopAt > now);
     const beat = 60 / this.song.bpm;
-    const horizon = this.ctx.currentTime + LOOKAHEAD;
+    const horizon = now + LOOKAHEAD;
     this.scheduledTo = Math.max(this.scheduledTo, (horizon - this.startTime) / beat);
     for (const s of this.streams) this.pump(s, horizon, beat);
     const loops = this.song.loop && this.timeline.main.span > 0;
-    const elapsed = (this.ctx.currentTime - this.startTime) / beat;
+    const elapsed = (now - this.startTime) / beat;
     if (!loops && this.streams.every((s) => s.done) && elapsed >= this.timeline.main.length && this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -301,7 +353,7 @@ export class Player {
 
   private trigger(e: NoteEvent, when: number, beat: number): void {
     const inst = this.instruments.get(this.song.tracks[e.track].instrument);
-    if (inst) playNote(this.ctx, this.routing, inst, when, midiToFrequency(e.pitch), e.duration * beat, e.velocity, true, this.trig);
+    if (inst) this.notes.push(playNote(this.ctx, this.routing, inst, when, midiToFrequency(e.pitch), e.duration * beat, e.velocity, true, this.trig));
   }
 
   private createLevel(song: Song): Level {
@@ -387,7 +439,7 @@ export class Player {
     const node = this.ctx.createGain();
     node.gain.value = isInstrumentAudible(this.song, instrument) ? 1 : 0;
     node.connect(target);
-    level.gates.set(id, { inst: instrument, node });
+    level.gates.set(id, { inst: instrument, key, node });
     return node;
   }
 

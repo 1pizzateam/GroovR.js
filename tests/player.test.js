@@ -136,6 +136,7 @@ describe('Player', () => {
       expect(player.playing).toBe(true);
       expect(ctx.oscillators.length).toBe(before);
       expect(player.position).toBeGreaterThan(0);
+      ctx.currentTime = 5;
       player.setSong(song({ loop: false }));
       const changed = song({ reverb: { seconds: 0.5, power: 3, return: 0.5 } });
       player.setSong(changed);
@@ -517,6 +518,48 @@ describe('Player', () => {
       delete sShort.instruments[0].layers[0].filter.adsr.amount;
       player.setSong(sShort);
       player.preview('syn', 69, 0.05, 0.8);
+    });
+
+    it('rewires gates immediately when bypassing effects and updates sounding and future notes when patches change while playing', () => {
+      const ctx = makeContext();
+      const gains = withGains(ctx);
+      const s = fxSong({
+        chain: [
+          { kind: 'gain', value: 5 },
+          { kind: 'distortion', drive: 8, hardness: 2, tone: 4000, level: 0.6, mix: 0.8 },
+        ],
+        gain: 0.9,
+      });
+      const player = new Player(ctx, s, { destination: ctx.destination });
+      run(ctx, player, 0.5);
+      const bypassed = structuredClone(s);
+      bypassed.instruments[0].fx.chain[0].bypass = true;
+      bypassed.instruments[0].fx.chain[1].drive = 15;
+      bypassed.instruments[0].layers[0].filter.q = 9;
+      bypassed.instruments[0].layers[0].voices[0].freq = { f: 4 };
+      bypassed.instruments[0].layers[0].voices[0].detune = 25;
+      player.setSong(bypassed);
+      const saws = ctx.oscillators.filter((o) => o.type === 'sawtooth');
+      expect(saws[0].frequency.value).toBeCloseTo(1760);
+      expect(saws.at(-1).frequency.value).toBeCloseTo(3520);
+      expect(gains.some((g) => g.gain.targets?.some((t) => t[0] === 15))).toBe(true);
+
+      const adsrSong = song({
+        instruments: [{
+          id: 'i',
+          layers: [{
+            kind: 'voice',
+            duration: { d: 1 },
+            adsr: { attack: 0.02, decay: 0.1, sustain: 0.5, release: 0.2 },
+            voices: [{ type: 'sawtooth', freq: { f: 1 } }],
+          }],
+        }],
+      });
+      player.setSong(adsrSong);
+      const adsrEdited = structuredClone(adsrSong);
+      adsrEdited.instruments[0].layers[0].adsr.sustain = 0.8;
+      player.setSong(adsrEdited);
+      player.stop();
     });
   });
 
