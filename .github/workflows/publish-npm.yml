@@ -55,10 +55,15 @@ jobs:
       - name: Run library tests
         run: npm run test
 
+      - name: Determine npm dist-tag
+        run: |
+          TAG=$(node -p "const m = require('./package.json').version.match(/-([a-zA-Z0-9]+)/); (m ? m[1] : 'latest').toLowerCase()")
+          echo "NPM_TAG=$TAG" >> "$GITHUB_ENV"
+
       - name: Verify package contents (dry run)
         run: |
-          npm publish --dry-run --access public
+          npm publish --dry-run --access public --tag "$NPM_TAG"
           npm pack --dry-run --json | node .github/scripts/check-package-files.mjs
 
       - name: Publish package to npm
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$NPM_TAG"
