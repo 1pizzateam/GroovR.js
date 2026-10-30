@@ -33,12 +33,16 @@ jobs:
       - name: Run library tests
         run: npm run test
 
+      - name: Verify release readiness (docs, CHANGELOG.md, package.json, tarball)
+        run: |
+          git clone --depth 1 https://github.com/1pizzateam/coding-pal.git /tmp/coding-pal
+          node /tmp/coding-pal/skills/release-readiness/scripts/verify-release-readiness.mjs --mode release --require-dist --build-docs
+          rm -rf /tmp/coding-pal
+
       - name: Determine npm dist-tag
         run: |
           TAG=$(node -p "const m = require('./package.json').version.match(/-([a-zA-Z0-9]+)/); (m ? m[1] : 'latest').toLowerCase()")
           echo "NPM_TAG=$TAG" >> "$GITHUB_ENV"
 
-      - name: Verify package contents (dry run)
-        run: |
-          npm publish --dry-run --access public --tag "$NPM_TAG"
-          npm pack --dry-run --json | node .github/scripts/check-package-files.mjs
+      - name: Verify package publish (dry run)
+        run: npm publish --dry-run --access public --tag "$NPM_TAG"

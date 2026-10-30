@@ -29,3 +29,24 @@ player.play();
 player.setLevel(0.25);
 player.stop(0.25);
 ```
+
+## API Reference
+
+### Song Format & Validation
+- `SONG_FORMAT` (`"groovr-song"`) and `SONG_VERSION` (`2`): Canonical format identifier and schema version.
+- `validateSong(input: unknown): string[]`: Validates a candidate song object and returns an array of human-readable validation errors (empty when valid).
+- `parseSong(json: string | unknown): Song`: Parses and validates a `groovr-song` payload (throwing on invalid input).
+- `migrateSong(raw: unknown): Song`: Migrates legacy song payloads to the current schema version and validates the result.
+
+### Playback & Timeline
+- `Player`: Lookahead Web Audio playback and mix engine (`play()`, `stop(fadeOutSeconds?)`, `setSong(song)`, `setLevel(gain)`, `setTrackMute(index, muted)`, `setTrackSolo(index, solo)`).
+- `buildTimeline(song: Song, includeMuted?: boolean): Timeline`: Flattens song tracks, clips, and patterns into sorted main and periodic `NoteEvent` streams.
+- `midiToFrequency(midi: number): number` & `frequencyToMidi(freq: number): number`: Convert between MIDI note numbers and frequencies in Hz.
+
+### Synthesis & Effects
+- `playNote(ctx, inst, freq, when, duration, velocity, routing): ScheduledNote`: Schedules a multi-layer voice/noise note with live `cancel()` and `update(inst, bpm)` handles.
+- `evaluate(expr: Expr | undefined, trigger: Trigger): number`: Evaluates a constant or affine modulation expression (`b`, `f`, `d`, `v`, `r`, `r2`, `r3`, `max`).
+- `createNoise(ctx: AudioContext): AudioBuffer`: Generates the shared white-noise buffer used by percussion/noise layers.
+- `buildEffect(env: FxEnv, node: EffectNode): Built` & `buildChain(env: FxEnv, nodes: EffectNode[]): Chain`: Constructs modular Web Audio effect nodes and chains (`gain`, `filter`, `delay`, `reverb`, `distortion`, `chorus`, `phaser`, `tremolo`, `vibrato`, `compressor`, `eq`, `stereo`).
+- `softClip(drive: number, hardness?: number): Float32Array<ArrayBuffer>` & `distortionShape(node): string`: Builds wave-shaper transfer curves and structural cache keys for distortion stages.
+- `createImpulse(ctx: AudioContext, seconds: number, power: number): AudioBuffer` & `reverbShape(node): string`: Generates stereo algorithmic impulse responses and structural cache keys for convolution reverb.
