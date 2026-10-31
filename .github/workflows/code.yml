@@ -39,4 +39,5 @@ jobs:
     with:
       workflow_run_id: ${{ github.run_id }}
       project_title: GroovR
+      auto_release_npm: true
     secrets: inherit
