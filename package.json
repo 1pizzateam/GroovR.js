@@ -1,8 +1,16 @@
 {
   "name": "@1pizzateam/groovr",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Song format and Web Audio playback engine for games, authored with the Cadenza editor",
-  "keywords": ["music", "audio", "web-audio", "synth", "sequencer", "game", "typescript"],
+  "keywords": [
+    "music",
+    "audio",
+    "web-audio",
+    "synth",
+    "sequencer",
+    "game",
+    "typescript"
+  ],
   "homepage": "https://github.com/1pizzateam/GroovR.js",
   "type": "module",
   "sideEffects": false,
@@ -33,7 +41,9 @@
     "rollup": "rollup --config rollup.config.mjs",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage"
   },
-  "files": ["dist/"],
+  "files": [
+    "dist/"
+  ],
   "publishConfig": {
     "access": "public"
   },

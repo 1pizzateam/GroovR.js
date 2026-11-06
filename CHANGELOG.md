@@ -1,3 +1,10 @@
+Version 0.1.0-alpha.4 (November 6th 2026)
+-----------------------------
+ * Implement spatial2D in a new module
+ * Export spatial2D from the package entry point
+ * Document the new public export
+ * Add unit tests for spatial2D
+
 Version 0.1.0-alpha.3 (October 25th 2026)
 -----------------------------
  * Upgraded `@1pizzateam/spock` to `4.5.0`:
