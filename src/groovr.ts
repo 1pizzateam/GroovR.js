@@ -37,3 +37,5 @@ export { buildTimeline, midiToFrequency, frequencyToMidi } from "./events.js";
 export type { NoteEvent, Stream, Timeline } from "./events.js";
 export { Player } from "./player.js";
 export type { PlayerOptions } from "./player.js";
+export { spatial2D } from "./spatial.js";
+export type { SpatialAudio2DOptions, SpatialAudio2DResult } from "./spatial.js";
