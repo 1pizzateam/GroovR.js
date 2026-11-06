@@ -50,3 +50,10 @@ player.stop(0.25);
 - `buildEffect(env: FxEnv, node: EffectNode): Built` & `buildChain(env: FxEnv, nodes: EffectNode[]): Chain`: Constructs modular Web Audio effect nodes and chains (`gain`, `filter`, `delay`, `reverb`, `distortion`, `chorus`, `phaser`, `tremolo`, `vibrato`, `compressor`, `eq`, `stereo`).
 - `softClip(drive: number, hardness?: number): Float32Array<ArrayBuffer>` & `distortionShape(node): string`: Builds wave-shaper transfer curves and structural cache keys for distortion stages.
 - `createImpulse(ctx: AudioContext, seconds: number, power: number): AudioBuffer` & `reverbShape(node): string`: Generates stereo algorithmic impulse responses and structural cache keys for convolution reverb.
+
+### Spatial Audio
+- `spatial2D(listenerPos: Vec2, listenerAngle: number, emitterPos: Vec2, options?: SpatialAudio2DOptions, out?: SpatialAudio2DResult): SpatialAudio2DResult`: Listener-relative 2D spatial audio returning `{ pan, gain, distance }`.
+- Angle convention: `listenerAngle` is in radians with forward `(cos a, sin a)`; at angle 0 positive pan is toward the listener's `+y` side.
+- `SpatialAudio2DOptions` defaults: `reference` 1, `range` 20, `panMax` 1, `easeDistance` 1.
+- Result: `pan` is clamped to `[-panMax, panMax]` and eased in for sources closer than `easeDistance`; `gain` is inverse-square attenuation, 1 within `reference` and reaching 0 at `range`; `distance` is the Euclidean distance.
+- Pass an `out` (`SpatialAudio2DResult`) object to make the call allocation-free; it is mutated and returned, and input vectors are never mutated.
