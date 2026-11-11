@@ -1,6 +1,6 @@
 {
   "name": "@1pizzateam/groovr",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0",
   "description": "Song format and Web Audio playback engine for games, authored with the Cadenza editor",
   "keywords": [
     "music",
@@ -51,7 +51,7 @@
     "node": ">= 22"
   },
   "dependencies": {
-    "@1pizzateam/spock": "4.5.0"
+    "@1pizzateam/spock": "4.6.0"
   },
   "devDependencies": {
     "@types/jest": "29.5.14",

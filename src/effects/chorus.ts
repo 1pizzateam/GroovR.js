@@ -29,7 +29,7 @@ export function buildChorus(stage: Stage): Spec<"chorus"> {
       stage.set(left.delayTime, base);
       stage.set(right.delayTime, base);
       stage.set(depthL.gain, depth);
-      stage.set(depthR.gain, -depth);
+      stage.set(depthR.gain, Utils.opposite(depth));
       stage.set(osc.frequency, x.rate ?? 0.8);
       w.mix(x.mix ?? 0.5);
     },

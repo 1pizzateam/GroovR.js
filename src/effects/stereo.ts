@@ -25,8 +25,8 @@ export function buildStereo(stage: Stage): Spec<"stereo"> {
     output: merger,
     apply(x) {
       const w = Utils.clamp(x.width ?? 1, 0, 2);
-      const straight = (1 + w) / 2;
-      const across = (1 - w) / 2;
+      const straight = Utils.map(w, 0, 2, 0.5, 1.5);
+      const across = Utils.map(w, 0, 2, 0.5, -0.5);
       stage.set(panner.pan, Utils.clampToExtent(x.pan ?? 0, 1));
       stage.set(s0.gain, straight);
       stage.set(s1.gain, straight);

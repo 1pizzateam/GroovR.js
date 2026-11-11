@@ -78,7 +78,7 @@ function adsr(param: AudioParam, t: number, hold: number, spec: Adsr, trig: Trig
   const sustain = Utils.clamp(evaluate(spec.sustain, trig), 0, 1);
   const startVal = Math.max(MIN_EXP_TARGET, base);
   const peakVal = base === 0 ? Math.max(MIN_EXP_TARGET, amount) : Utils.clamp(base + amount, 20, 20000);
-  const sustainVal = base === 0 ? Math.max(MIN_EXP_TARGET, amount * sustain) : Utils.clamp(base + amount * sustain, 20, 20000);
+  const sustainVal = base === 0 ? Math.max(MIN_EXP_TARGET, amount * sustain) : Utils.clamp(Utils.lerp(base, base + amount, sustain), 20, 20000);
   const releaseAt = Math.max(t + attack, t + hold);
   param.setValueAtTime(base === 0 ? 0 : startVal, t);
   if (base === 0) param.linearRampToValueAtTime(peakVal, t + attack);

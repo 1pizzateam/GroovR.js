@@ -10,7 +10,7 @@ export function createImpulse(ctx: AudioContext, seconds: number, power: number)
   const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
   for (let c = 0; c < 2; c++) {
     const data = impulse.getChannelData(c);
-    for (let i = 0; i < length; i++) data[i] = Rand.float(-1, 1) * (1 - i / length) ** power;
+    for (let i = 0; i < length; i++) data[i] = Rand.float(-1, 1) * (1 - Utils.normalize(i, 0, length)) ** power;
   }
   return impulse;
 }

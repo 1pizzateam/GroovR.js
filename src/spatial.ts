@@ -1,4 +1,4 @@
-import { Utils, Vec2 } from "@1pizzateam/spock";
+import { Trigo, Utils, Vec2 } from "@1pizzateam/spock";
 
 export interface SpatialAudio2DOptions {
 	reference?: number;
@@ -15,6 +15,7 @@ export interface SpatialAudio2DResult {
 
 const EPSILON = 1e-9;
 const scratch = new Vec2();
+const forward = new Vec2(1, 0);
 
 /**
  * Listener-relative 2D spatial audio. Forward is (cos a, sin a); positive pan is toward the listener's +y side at angle 0.
@@ -34,11 +35,12 @@ export function spatial2D(
 	const easeDistance = options?.easeDistance ?? 1;
 
 	scratch.subVectors(emitterPos, listenerPos);
-	const distance = Math.sqrt(scratch.dotProduct(scratch));
+	const distance = scratch.getMagnitude();
 
 	let pan = 0;
 	if (distance >= EPSILON) {
-		pan = (Math.cos(listenerAngle) * scratch.y - Math.sin(listenerAngle) * scratch.x) / distance;
+		forward.setScalar(Trigo.cosinePrecise(listenerAngle), Trigo.sinePrecise(listenerAngle));
+		pan = forward.crossProduct(scratch) / distance;
 		if (easeDistance > 0) pan *= Utils.clamp(distance / easeDistance, 0, 1);
 	}
 
@@ -48,10 +50,10 @@ export function spatial2D(
 	else {
 		const r2 = reference * reference;
 		const floor = r2 / (range * range);
-		gain = Utils.clamp((r2 / (distance * distance) - floor) / (1 - floor), 0, 1);
+		gain = Utils.clamp(Utils.normalize(r2 / scratch.getMagnitude(true), floor, 1), 0, 1);
 	}
 
-	result.pan = Utils.clamp(pan * panMax, -panMax, panMax);
+	result.pan = Utils.clampToExtent(pan * panMax, panMax);
 	result.gain = gain;
 	result.distance = distance;
 	return result;

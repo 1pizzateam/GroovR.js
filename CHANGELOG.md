@@ -1,3 +1,15 @@
+Version 0.1.0 (November 11th 2026)
+-----------------------------
+ * Speech synthesis (`speak`, `textToPhonemes`, `PHONEMES`, `VOICE_GENDERS`):
+    * Add robotic formant speech synthesis engine (`src/speech.ts`) with a continuous 3-bandpass parallel vocal tract (`F1`, `F2`, `F3`), sawtooth fundamental + sub-octave chest oscillator, vocal-cord soft-clipping waveshaper, vibrato LFO, and unvoiced consonant burst/frication noise.
+    * Support selectable `gender` presets (`"male"`, `"female"`, `"neutral"`), custom `pitch`, `speed`, `gain`, `drive`, `vibratoRate`, `vibratoDepth`, custom pitch `contour`, and automatic rising interrogative (`?`) vs. falling statement cadence with legato voiced word liaisons.
+    * Add English-to-phoneme conversion (`textToPhonemes`) supporting domain lexicon words, digraphs, silent trailing `e`, doubled consonant collapsing, digits (`0`–`9`), and direct phoneme code arrays.
+    * Export `speak`, `textToPhonemes`, `PHONEMES`, `VOICE_GENDERS`, and types (`PhonemeSpec`, `SpeechOptions`, `SpeechResult`, `VoiceGender`, `VoiceGenderPreset`) from the package entry point.
+ * Upgraded `@1pizzateam/spock` to `4.6.0`:
+    * Re-export `Vec2` from the package entry point alongside `spatial2D`.
+    * Delegate 2D spatial distance, listener-relative cross product pan, inverse-square attenuation normalization, and symmetric pan clamping in `spatial2D()` to `Vec2.getMagnitude()`, `Trigo.cosinePrecise()`, `Trigo.sinePrecise()`, `Vec2.crossProduct()`, `Utils.normalize()`, and `Utils.clampToExtent()`.
+    * Delegate unvoiced/liaison formant midpoint blending in `speak()` to `Utils.mix()`, stereo width crossfade gains in `buildStereo()` to `Utils.map()`, opposite right-channel chorus depth in `buildChorus()` to `Utils.opposite()`, reverb impulse decay normalization in `createImpulse()` to `Utils.normalize()`, and filter ADSR sustain interpolation in `adsr()` to `Utils.lerp()`.
+
 Version 0.1.0-alpha.4 (November 6th 2026)
 -----------------------------
  * Implement spatial2D in a new module
